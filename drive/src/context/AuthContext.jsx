@@ -83,7 +83,7 @@ export const AuthProvider = ({ children }) => {
 
       // Synchronize the authenticated Google/Firebase user data with our Node.js backend
       const response = await axios.post(
-         "http://localhost:5000/api/auth/google-sync",
+         (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api") + "/auth/google-sync",
          {
             name: firebaseUser.displayName,
             email: firebaseUser.email,

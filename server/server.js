@@ -15,7 +15,17 @@ connectDB();
 
 const app = express();
 
-app.use(cors());
+// Configure CORS for production (Render deployment) and local development
+const allowedOrigins = [
+  'http://localhost:5173',            // Standard local React Vite port
+  'http://localhost:3000',
+  process.env.FRONTEND_URL            // Dynamic Render frontend URL configured via environment variables
+].filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.use(express.json());
 
 // Create uploads folder statically on process load if not present
