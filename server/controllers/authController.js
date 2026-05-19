@@ -61,7 +61,8 @@ export const loginUser = async (req, res) => {
 
     const user = await User.findOne({ email });
 
-    if (user && (await bcrypt.compare(password, user.password))) {
+    // Safely check user.password exists to prevent bcrypt.compare from throwing on null values
+    if (user && user.password && (await bcrypt.compare(password, user.password))) {
       res.json({
         _id: user.id,
         name: user.name,
@@ -170,40 +171,56 @@ export const resetPassword = async (req, res) => {
 
 export const googleLoginSync = async (req, res) => {
   try {
-    const { email, name } = req.body;
+    const { name, email, googleId, avatar } = req.body;
+
     if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
-    }
-
-    const emailLower = email.toLowerCase();
-    const isValidDomain = emailLower.endsWith('@gmail.com') || emailLower.endsWith('@shnoor.com') || emailLower.endsWith('@shnoor');
-    if (!isValidDomain) {
-      return res.status(400).json({ message: 'Only Gmail and Shnoor accounts are allowed to join' });
-    }
-
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = await User.create({
-        name: name || 'Google User',
-        email,
-        password: crypto.randomBytes(16).toString('hex'),
-        storageUsed: 0,
-        storageLimit: 104857600,
+      return res.status(400).json({
+        message: "Email required"
       });
     }
 
-    const token = generateToken(user._id);
+    let user = await User.findOne({ email });
 
-    res.status(200).json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
+    if (!user) {
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        avatar,
+        password: null,
+        storageUsed: 0,
+        storageLimit: 100 * 1024 * 1024
+      });
+    } else {
+      // If the user already exists, update their Google ID and avatar if not already set
+      let updated = false;
+      if (!user.googleId && googleId) {
+        user.googleId = googleId;
+        updated = true;
+      }
+      if (!user.avatar && avatar) {
+        user.avatar = avatar;
+        updated = true;
+      }
+      if (updated) {
+        await user.save();
+      }
+    }
+
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
       token,
-      storageUsed: user.storageUsed,
-      storageLimit: user.storageLimit,
+      user
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Google sync failed on server' });
+    console.log("GOOGLE LOGIN ERROR:", error);
+    res.status(500).json({
+      message: error.message
+    });
   }
 };

@@ -17,17 +17,25 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    default: null
+  },
+  googleId: {
+    type: String,
+    default: null
+  },
+  avatar: {
+    type: String,
+    default: null
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
   storageUsed: {
     type: Number,
-    default: 0, // 0 bytes initially
+    default: 0,
   },
   storageLimit: {
     type: Number,
-    default: 104857600, // 100 MB in bytes (100 * 1024 * 1024)
+    default: 100 * 1024 * 1024,
   },
 }, { timestamps: true });
 

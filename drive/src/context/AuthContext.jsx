@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import axios from 'axios';
 
 const AuthContext = createContext();
 
@@ -65,48 +66,46 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     setUser(null);
     navigate('/login');
   };
 
   const loginWithGoogle = async () => {
     try {
+      // Import Firebase Auth tools dynamically
       const { signInWithPopup } = await import('firebase/auth');
-      const { auth, provider } = await import('../firebase');
+      const { auth, provider: googleProvider } = await import('../firebase');
       
-      const result = await signInWithPopup(auth, provider);
+      // Trigger Firebase popup Google login (ignore browser COOP warnings in development)
+      const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
-      
-      const email = firebaseUser.email || '';
-      const emailLower = email.toLowerCase();
-      const isValidDomain = emailLower.endsWith('@gmail.com') || emailLower.endsWith('@shnoor.com') || emailLower.endsWith('@shnoor');
-      
-      if (!isValidDomain) {
-        const { signOut } = await import('firebase/auth');
-        await signOut(auth);
-        return { success: false, message: 'Only Gmail and Shnoor accounts are allowed to join' };
-      }
 
-      const response = await api.post('/auth/google-sync', {
-        email: firebaseUser.email,
-        name: firebaseUser.displayName || 'Google User'
-      });
+      // Synchronize the authenticated Google/Firebase user data with our Node.js backend
+      const response = await axios.post(
+         "http://localhost:5000/api/auth/google-sync",
+         {
+            name: firebaseUser.displayName,
+            email: firebaseUser.email,
+            googleId: firebaseUser.uid,
+            avatar: firebaseUser.photoURL
+         }
+      );
 
-      const appUser = {
-        _id: response.data._id,
-        name: response.data.name,
-        email: response.data.email,
-        token: response.data.token,
-        isFirebase: false
-      };
+      // Store JWT token and user profile in localStorage for session persistence
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
 
-      localStorage.setItem('user', JSON.stringify(appUser));
-      setUser(appUser);
+      // Update auth state and redirect to dashboard
+      setUser(response.data.user);
       navigate('/drive');
       return { success: true };
     } catch (error) {
-      console.error('Google sync failed', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Google Login failed' };
+      console.log("GOOGLE LOGIN ERROR:", error);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || error.message || 'Google Login failed' 
+      };
     }
   };
 
