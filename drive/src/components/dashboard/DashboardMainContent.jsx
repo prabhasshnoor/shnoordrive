@@ -365,7 +365,7 @@ const DashboardMainContent = () => {
                         {sortedFiles.map((file) => {
                           const IconComponent = getFileIcon(file.type);
                           const iconColor = getIconColorClass(file.type);
-                          const backendUrl = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${file.fileUrl}`;
+                          const backendUrl = `${import.meta.env.VITE_BACKEND_URL}${file.fileUrl}`;
                           
                           // Extract leaf name when deep in a folder view (e.g. "MyPhotos/logo.png" -> "logo.png")
                           const displayName = currentFolder !== null && file.relativePath
