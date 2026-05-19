@@ -7,7 +7,6 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { login, loginWithGoogle, user } = useAuth();
   
-  // If the user is already authenticated, keep them inside the dashboard
   React.useEffect(() => {
     if (user) {
       navigate('/drive', { replace: true });
