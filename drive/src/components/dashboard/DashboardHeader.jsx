@@ -1,7 +1,10 @@
 import React from 'react';
-import { Search, Settings, HelpCircle, Grid, Menu } from 'lucide-react';
+import { Search, Settings, HelpCircle, Grid, Menu, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const DashboardHeader = () => {
+  const { user, logout } = useAuth();
+
   return (
     <header className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-white">
       <div className="flex items-center w-64">
@@ -38,7 +41,7 @@ const DashboardHeader = () => {
         </div>
       </div>
 
-      <div className="flex items-center justify-end w-64 pr-2 space-x-1">
+      <div className="flex items-center justify-end w-auto pr-2 space-x-1">
         <button className="p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors tooltip" title="Support">
           <HelpCircle size={22} />
         </button>
@@ -50,15 +53,20 @@ const DashboardHeader = () => {
           <Grid size={22} />
         </button>
         
-        <div className="ml-2 pl-2 border-l border-slate-200 flex items-center cursor-pointer hover:bg-slate-50 rounded-full py-1 pr-1 pl-3 transition-colors border border-slate-200">
-          <div className="flex flex-col items-end mr-2">
-            <span className="text-xs font-bold text-blue-700 leading-none">SHNOOR</span>
-            <span className="text-[10px] text-slate-500 leading-none">International</span>
+        {user ? (
+          <div className="ml-2 pl-2 border-l border-slate-200 flex items-center bg-slate-50 rounded-full py-1 pr-3 pl-3 transition-colors border border-slate-200 gap-3">
+            <div className="flex flex-col items-end">
+              <span className="text-sm font-semibold text-slate-800">{user.name}</span>
+              <span className="text-xs text-slate-500">{user.email}</span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
+              {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <button onClick={logout} className="ml-2 p-1.5 rounded-full hover:bg-red-100 text-slate-500 hover:text-red-600 transition-colors" title="Logout">
+              <LogOut size={18} />
+            </button>
           </div>
-          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm">
-            S
-          </div>
-        </div>
+        ) : null}
       </div>
     </header>
   );
