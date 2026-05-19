@@ -1,5 +1,3 @@
-// src/context/AuthContext.jsx
-// Streamlined AuthContext responsible solely for authentication states, profile settings, and login flows
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
@@ -11,7 +9,6 @@ export const AuthProvider = ({ children }) => {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const navigate = useNavigate();
 
-  // Load user from localStorage on initial load
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -19,7 +16,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Check token validation on mount
   useEffect(() => {
     if (user && !user.isFirebase) {
       verifyToken();
@@ -37,7 +33,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Register function
   const register = async (name, email, password) => {
     try {
       const response = await api.post('/auth/register', { name, email, password });
@@ -53,7 +48,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Login function
   const login = async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password });
@@ -69,14 +63,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout function
   const logout = () => {
     localStorage.removeItem('user');
     setUser(null);
     navigate('/login');
   };
 
-  // Google Login function (Firebase integration)
   const loginWithGoogle = async () => {
     try {
       const { signInWithPopup } = await import('firebase/auth');
@@ -85,7 +77,16 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
-      // Sync Google user profile on backend
+      const email = firebaseUser.email || '';
+      const emailLower = email.toLowerCase();
+      const isValidDomain = emailLower.endsWith('@gmail.com') || emailLower.endsWith('@shnoor.com') || emailLower.endsWith('@shnoor');
+      
+      if (!isValidDomain) {
+        const { signOut } = await import('firebase/auth');
+        await signOut(auth);
+        return { success: false, message: 'Only Gmail and Shnoor accounts are allowed to join' };
+      }
+
       const response = await api.post('/auth/google-sync', {
         email: firebaseUser.email,
         name: firebaseUser.displayName || 'Google User'

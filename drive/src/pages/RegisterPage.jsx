@@ -7,7 +7,6 @@ const RegisterPage = () => {
   const navigate = useNavigate();
   const { register, user } = useAuth();
 
-  // If the user is already authenticated, keep them inside the dashboard
   React.useEffect(() => {
     if (user) {
       navigate('/drive', { replace: true });
@@ -35,8 +34,10 @@ const RegisterPage = () => {
       return setError('Passwords do not match');
     }
 
-    if (!formData.email.endsWith('@gmail.com')) {
-      return setError('Only Gmail accounts allowed');
+    const emailLower = formData.email.toLowerCase();
+    const isValidDomain = emailLower.endsWith('@gmail.com') || emailLower.endsWith('@shnoor.com') || emailLower.endsWith('@shnoor');
+    if (!isValidDomain) {
+      return setError('Only Gmail and Shnoor accounts allowed');
     }
 
     setLoading(true);
@@ -80,12 +81,12 @@ const RegisterPage = () => {
               />
             </div>
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">Gmail address</label>
+              <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">Gmail or Shnoor email address</label>
               <input
                 id="email" name="email" type="email" required
                 value={formData.email} onChange={handleChange}
                 className="appearance-none relative block w-full px-4 py-3 border border-slate-200 placeholder-slate-400 text-slate-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
-                placeholder="user@gmail.com"
+                placeholder="user@gmail.com or user@shnoor.com"
               />
             </div>
             <div>
