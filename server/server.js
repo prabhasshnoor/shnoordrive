@@ -15,18 +15,20 @@ connectDB();
 
 const app = express();
 
-// Configure CORS for production (Render deployment) and local development
-const allowedOrigins = [
-  'http://localhost:5173',            // Standard local React Vite port
-  'http://localhost:3000',
-  process.env.FRONTEND_URL            // Dynamic Render frontend URL configured via environment variables
-].filter(Boolean);
-
+// Configure CORS (Cross-Origin Resource Sharing) to allow requests from specific frontend origins
+// This resolves the browser's "Access-Control-Allow-Origin" headers errors during MERN production deployment
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
+   origin: [
+      "http://localhost:5173",          // Local React development server
+      "https://drive-nz9r.onrender.com" // Deployed production React app on Render
+   ],
+   credentials: true                    // Allows cookies/headers to be sent between frontend and backend
 }));
+
+// Setup Express JSON parsing middleware
+// CRITICAL: This MUST be defined before defining any route middleware so incoming JSON request bodies (req.body) are successfully parsed.
 app.use(express.json());
+
 
 // Create uploads folder statically on process load if not present
 const uploadsDir = './uploads';
