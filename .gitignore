@@ -3,3 +3,9 @@ dist
 dist-ssr
 *.local
 .env
+uploads/
+*.pdf
+*.mp4
+*.zip
+*.png
+*.jpg

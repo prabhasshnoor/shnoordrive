@@ -1,6 +1,7 @@
 // src/context/DriveContext.jsx
 // Premium, highly performant context that manages global, synchronized state for files, folders, and storage
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import axios from 'axios'; // Import standard axios to directly interact with environment-driven production endpoints
 import api from '../api/axios';
 import { useAuth } from './AuthContext';
 
@@ -19,6 +20,7 @@ export const DriveProvider = ({ children }) => {
   const [uploadState, setUploadState] = useState(null); // { name, progress, status, error }
 
   // @desc    Fetch all user drive data from the MERN backend API endpoints
+  // Note: All 'api' instances automatically inherit 'import.meta.env.VITE_API_BASE_URL'
   const fetchDriveData = async () => {
     if (!user) return;
     setLoadingDrive(true);
@@ -63,6 +65,7 @@ export const DriveProvider = ({ children }) => {
   }, [user]);
 
   // @desc    Upload file via Axios with real-time progress calculations and instant state synchronization
+  // Uses Vite's production environment base URL for complete deployment portability.
   const uploadFile = async (file, relativePath = '') => {
     setUploadState({ name: relativePath || file.name, progress: 0, status: 'uploading', error: null });
     const formData = new FormData();
@@ -71,16 +74,25 @@ export const DriveProvider = ({ children }) => {
       formData.append('relativePath', relativePath);
     }
 
+    // Retrieve the authorization token dynamically from local storage
+    const token = localStorage.getItem('token') || JSON.parse(localStorage.getItem('user') || '{}')?.token;
+
     try {
-      const response = await api.post('/files/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setUploadState((prev) => prev ? { ...prev, progress: percent } : null);
+      // Direct axios call targeting the Vite environment variable VITE_API_BASE_URL to avoid hardcoded localhost
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_BASE_URL}/files/upload`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadState((prev) => prev ? { ...prev, progress: percent } : null);
+          }
         }
-      });
+      );
 
       if (response.data.success) {
         setUploadState((prev) => prev ? { ...prev, status: 'completed', progress: 100 } : null);
