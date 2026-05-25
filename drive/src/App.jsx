@@ -47,6 +47,11 @@ function App() {
             <InternalDashboard />
           </ProtectedRoute>
         } />
+        <Route path="/drive/access-requests" element={
+          <ProtectedRoute>
+            <InternalDashboard />
+          </ProtectedRoute>
+        } />
         <Route path="/drive/bin" element={
           <ProtectedRoute>
             <InternalDashboard />

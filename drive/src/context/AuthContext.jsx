@@ -89,7 +89,8 @@ export const AuthProvider = ({ children }) => {
             email: firebaseUser.email,
             googleId: firebaseUser.uid,
             avatar: firebaseUser.photoURL
-         }
+         },
+         { withCredentials: true }
       );
 
       // Store JWT token and user profile in localStorage for session persistence

@@ -29,6 +29,7 @@ app.use(cors({
 // Setup Express JSON parsing middleware
 // CRITICAL: This MUST be defined before defining any route middleware so incoming JSON request bodies (req.body) are successfully parsed.
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 
 // Create uploads folder statically on process load if not present
@@ -63,7 +64,19 @@ app.use('/api/protected', protectedRoutes);
 // Share feature routes (POST /api/files/:id/share & GET /api/shared/:shareId)
 app.use('/api', shareRoutes);
 
+// Global Error Handler Middleware to prevent backend crashes
+app.use((err, req, res, next) => {
+  console.error('SERVER ERROR IN EXPRESS MIDDLEWARE:', err.stack || err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Server Error'
+  });
+});
+
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server started successfully. Listening on port ${PORT}`);
+  console.log(`Development Server URL: http://localhost:${PORT}`);
+});
 // Triggering nodemon reload to refresh .env variables

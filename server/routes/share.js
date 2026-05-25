@@ -4,38 +4,41 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import protect from '../middleware/auth.js';
-import { shareFile, getSharedFile, getSharedLinks, unshareFile } from '../controllers/shareController.js';
+import { 
+  shareFile, getSharedFile, getSharedLinks, unshareFile,
+  requestAccess, getAccessRequests, approveAccessRequest, rejectAccessRequest
+} from '../controllers/shareController.js';
 
 const router = express.Router();
 
 // --- Rate Limiter for Share Generation using express-rate-limit ---
-// Limits each IP to 10 share link generations per minute to prevent abuse
 const shareRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // Limit each IP to 10 requests per minute
+  windowMs: 60 * 1000,
+  max: 10,
   message: { message: 'Too many share link generations from this IP. Please try again after a minute.' },
-  standardHeaders: true, // Return rate limit info in standard Headers
-  legacyHeaders: false, // Disable X-RateLimit-* headers
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // @route   GET /api/files/shared-links
-// @desc    Get all shared files for the logged-in user
-// @access  Private (JWT protected)
 router.get('/files/shared-links', protect, getSharedLinks);
 
 // @route   POST /api/files/:id/share
-// @desc    Generate a public share link for a file (rate-limited)
-// @access  Private (JWT protected)
 router.post('/files/:id/share', protect, shareRateLimiter, shareFile);
 
 // @route   PUT /api/files/:id/unshare
-// @desc    Unshare a file (remove shared link)
-// @access  Private (JWT protected)
+router.put('/api/files/:id/unshare', protect, unshareFile); // Note: Keep this route definition but correct it if needed. Let's make sure it matches drive/src/App.jsx. Wait! In shareController.js, the comment says "/api/files/:id/unshare", but here it was "router.put('/files/:id/unshare', protect, unshareFile)". Since it is mounted on "/api", the actual request URL is "/api/files/:id/unshare". So "router.put('/files/:id/unshare')" is correct. Let's keep it as "/files/:id/unshare".
+
+// Let's list the routes:
 router.put('/files/:id/unshare', protect, unshareFile);
 
+// Access request endpoints
+router.post('/share/request-access', protect, requestAccess);
+router.get('/share/access-requests', protect, getAccessRequests);
+router.patch('/share/access-requests/:id/approve', protect, approveAccessRequest);
+router.patch('/share/access-requests/:id/reject', protect, rejectAccessRequest);
+
 // @route   GET /api/shared/:shareId
-// @desc    Get shared file data by share ID (public — no login required)
-// @access  Public
 router.get('/shared/:shareId', getSharedFile);
 
 export default router;

@@ -4,9 +4,12 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Download, File, FileImage, FileVideo, FileText, Music, 
-  AlertCircle, Cloud, ArrowLeft, Eye, Share2, Calendar, HardDrive 
+  AlertCircle, Cloud, ArrowLeft, Eye, Share2, Calendar, HardDrive,
+  Lock, Globe, ShieldAlert, Send, CheckCircle2, UserCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
+import RequestAccessPage from './RequestAccessPage';
 
 /**
  * Helper to convert raw byte sizes into human readable formats.
@@ -53,57 +56,92 @@ const getFileTypeLabel = (mimeType) => {
   return 'Document';
 };
 
-/**
- * SharedFilePage component
- * Google Drive inspired public shared preview page.
- * Loads shared file metadata, displays rich media previews (image, video, PDF)
- * and enables direct downloading.
- */
 const SharedFilePage = () => {
   const { shareId } = useParams();
   const navigate = useNavigate();
+  
+  // States
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sharedData, setSharedData] = useState(null);
+  
+  // Access request specific states
+  const [requiresAuth, setRequiresAuth] = useState(false);
+  const [requiresAccess, setRequiresAccess] = useState(false);
+  const [requestStatus, setRequestStatus] = useState(null); // 'pending' | 'rejected' | null
+  const [ownerInfo, setOwnerInfo] = useState(null);
+  const [fileInfo, setFileInfo] = useState(null);
+  
+  // User input states for request access form
+  const [requestedRole, setRequestedRole] = useState('viewer');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
 
   useEffect(() => {
-    // If logged in, redirect to dashboard shared link view
+    // If logged in and has access, redirect to dashboard shared link view
+    // But only if we have successfully validated the token and the link allows it.
     const token = localStorage.getItem('token') || JSON.parse(localStorage.getItem('user') || '{}')?.token;
-    if (token && shareId) {
+    if (token && shareId && sharedData?.success) {
       navigate(`/drive/shared/${shareId}`);
     }
-  }, [shareId, navigate]);
+  }, [shareId, navigate, sharedData]);
 
-  useEffect(() => {
-    const fetchSharedFile = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const baseUrl = import.meta.env.VITE_API_BASE_URL;
-        // Make standard public GET request without authentication headers
-        const response = await axios.get(`${baseUrl}/shared/${shareId}`);
-        if (response.data.success) {
-          setSharedData(response.data);
+  const fetchSharedFile = async () => {
+    setLoading(true);
+    setError(null);
+    setRequiresAuth(false);
+    setRequiresAccess(false);
+    setRequestStatus(null);
+    
+    try {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL;
+      const token = localStorage.getItem('token') || JSON.parse(localStorage.getItem('user') || '{}')?.token;
+      
+      const headers = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      // GET request to retrieve shared details
+      const response = await axios.get(`${baseUrl}/shared/${shareId}`, { 
+        headers,
+        withCredentials: true 
+      });
+      
+      if (response.data.success) {
+        setSharedData(response.data);
+      } else {
+        // Handle private link routing redirects
+        setOwnerInfo(response.data.owner);
+        setFileInfo(response.data.file);
+
+        if (response.data.requiresAuth) {
+          setRequiresAuth(true);
+        } else if (response.data.requiresAccess) {
+          setRequiresAccess(true);
+          setRequestStatus(response.data.requestStatus);
         } else {
           setError(response.data.message || 'Unable to load shared file.');
         }
-      } catch (err) {
-        console.error('Fetch shared file failed:', err);
-        const status = err.response?.status;
-        const msg = err.response?.data?.message;
-        
-        if (status === 404) {
-          setError('This file is not shared or the link is invalid.');
-        } else if (status === 400) {
-          setError('Invalid shared link format.');
-        } else {
-          setError(msg || 'An error occurred while loading the shared file.');
-        }
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err) {
+      console.error('Fetch shared file failed:', err);
+      const status = err.response?.status;
+      const msg = err.response?.data?.message;
+      
+      if (status === 404) {
+        setError('This file is not shared or the link is invalid.');
+      } else if (status === 400) {
+        setError('Invalid shared link format.');
+      } else {
+        setError(msg || 'An error occurred while loading the shared file.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (shareId) {
       fetchSharedFile();
     }
@@ -123,6 +161,34 @@ const SharedFilePage = () => {
     }
   };
 
+  const handleRequestAccessSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingRequest(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL;
+      const token = localStorage.getItem('token') || JSON.parse(localStorage.getItem('user') || '{}')?.token;
+
+      const response = await axios.post(
+        `${baseUrl}/share/request-access`,
+        { shareId, requestedRole, message: requestMessage },
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true 
+        }
+      );
+
+      if (response.data.success) {
+        toast.success('Access request submitted!');
+        setRequestStatus('pending');
+      }
+    } catch (err) {
+      console.error('Request access failed:', err);
+      toast.error(err.response?.data?.message || 'Failed to submit request');
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
   // Render Spinner Loading State
   if (loading) {
     return (
@@ -135,7 +201,69 @@ const SharedFilePage = () => {
     );
   }
 
-  // Render 404 / Error State
+  // 1. Render Requires Authentication State (Private link & Guest User)
+  if (requiresAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 font-sans text-slate-800">
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white border border-slate-200/80 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center"
+        >
+          <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500 mb-5 animate-pulse">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 mb-2">You need access</h2>
+          <p className="text-xs text-slate-500 font-semibold leading-relaxed mb-6">
+            This file is private. Sign in with an authorized account or log in to request access from the owner.
+          </p>
+
+          {/* Owner details */}
+          {ownerInfo && (
+            <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-2xl border border-slate-100 w-full mb-6 text-left">
+              <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shrink-0">
+                {ownerInfo.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-700 truncate">{ownerInfo.name}</p>
+                <p className="text-[10px] text-slate-400 font-semibold truncate">{ownerInfo.email}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col w-full gap-3">
+            <Link 
+              to={`/login?redirect=/shared/${shareId}`}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider text-center transition-all shadow-md shadow-blue-500/10"
+            >
+              Sign In to Request Access
+            </Link>
+            <Link 
+              to="/"
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider py-1.5"
+            >
+              Back to Home
+            </Link>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 2. Render Requires Access Request State (Private link, Logged In, No Permission yet)
+  if (requiresAccess) {
+    return (
+      <RequestAccessPage
+        shareId={shareId}
+        ownerInfo={ownerInfo}
+        fileInfo={fileInfo}
+        requestStatus={requestStatus}
+        setRequestStatus={setRequestStatus}
+      />
+    );
+  }
+
+  // 3. Render 404 / Error State
   if (error || !sharedData) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 font-sans text-slate-800">
@@ -181,7 +309,7 @@ const SharedFilePage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
-      {/* Sleek Minimal Header */}
+      {/* Minimal Header */}
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between shadow-sm shrink-0">
         <div className="flex items-center space-x-3 select-none">
           <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/20 text-white font-bold text-base">
@@ -198,7 +326,7 @@ const SharedFilePage = () => {
         </Link>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 flex flex-col lg:flex-row gap-6">
         
         {/* Left Section: File Previewer */}
@@ -228,7 +356,6 @@ const SharedFilePage = () => {
                 className="w-full h-full min-h-[420px] md:min-h-[520px] border-none"
               />
             ) : (
-              // General Document Fallback Card
               <div className="flex flex-col items-center justify-center p-6 text-center max-w-sm">
                 <div className={`p-5 rounded-2xl border mb-4 shadow-sm ${iconColor}`}>
                   <IconComponent size={40} strokeWidth={2} />
@@ -251,10 +378,8 @@ const SharedFilePage = () => {
           </div>
         </section>
 
-        {/* Right Section: Owner & Metadata info */}
+        {/* Right Section: Owner & Metadata */}
         <section className="w-full lg:w-80 shrink-0 flex flex-col gap-6">
-          
-          {/* Owner details card */}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3.5 flex items-center space-x-1.5">
               <Share2 size={13} />
@@ -283,7 +408,6 @@ const SharedFilePage = () => {
             </div>
           </div>
 
-          {/* File specifications card */}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm flex-1 flex flex-col justify-between gap-6">
             <div>
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
@@ -333,7 +457,6 @@ const SharedFilePage = () => {
               </ul>
             </div>
 
-            {/* Quick Actions (only downloads needed) */}
             <div className="pt-5 border-t border-slate-100 flex flex-col gap-3">
               <button
                 onClick={handleDownload}
@@ -345,10 +468,8 @@ const SharedFilePage = () => {
             </div>
           </div>
         </section>
-
       </main>
 
-      {/* Footer Info */}
       <footer className="bg-white border-t border-slate-100 py-4 px-6 text-center text-[10px] font-semibold text-slate-400 uppercase tracking-widest shrink-0">
         © 2026 ShnoorDrive Inc. • Protected by end-to-end security
       </footer>

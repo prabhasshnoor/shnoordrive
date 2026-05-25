@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios'; // Import standard axios to directly interact with environment-driven production endpoints
 import api from '../api/axios';
 import { useAuth } from './AuthContext';
+import toast from 'react-hot-toast';
 
 const DriveContext = createContext();
 
@@ -19,6 +20,8 @@ export const DriveProvider = ({ children }) => {
   const [storageLimit, setStorageLimit] = useState(104857600); // Default 100MB
   const [loadingDrive, setLoadingDrive] = useState(false);
   const [uploadState, setUploadState] = useState(null); // { name, progress, status, error }
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [loadingAccessRequests, setLoadingAccessRequests] = useState(false);
 
   // @desc    Fetch all user drive data from the MERN backend API endpoints
   // Note: All 'api' instances automatically inherit 'import.meta.env.VITE_API_BASE_URL'
@@ -50,6 +53,12 @@ export const DriveProvider = ({ children }) => {
       const sharedRes = await api.get('/files/shared-links');
       if (sharedRes.data.success) {
         setSharedLinks(sharedRes.data.files || []);
+      }
+
+      // 5. Get access requests
+      const requestsRes = await api.get('/share/access-requests');
+      if (requestsRes.data.success) {
+        setAccessRequests(requestsRes.data.requests || []);
       }
     } catch (error) {
       console.error('Failed to retrieve synchronized drive listing:', error);
@@ -95,6 +104,7 @@ export const DriveProvider = ({ children }) => {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data',
           },
+          withCredentials: true,
           onUploadProgress: (progressEvent) => {
             const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setUploadState((prev) => prev ? { ...prev, progress: percent } : null);
@@ -270,19 +280,19 @@ export const DriveProvider = ({ children }) => {
     }
   };
 
-  // @desc    Share a file by generating a unique public link via the backend API
+  // @desc    Share a file by generating a unique public/private link via the backend API
   // Updates local state instantly so the shared badge appears without a page refresh
-  const shareFileById = async (fileId) => {
+  const shareFileById = async (fileId, visibility = 'public') => {
     try {
-      // Call the share endpoint on the backend
-      const response = await api.post(`/files/${fileId}/share`);
+      // Call the share endpoint on the backend with the visibility configuration
+      const response = await api.post(`/files/${fileId}/share`, { visibility });
       if (response.data.success) {
-        const { shareId, shareUrl, file: updatedFile } = response.data;
+        const { shareId, shareUrl, visibility: updatedVisibility, file: updatedFile } = response.data;
 
         // Instantly update the file's isShared flag in all local state arrays
         // so the shared badge appears in real-time across all views
         const updateSharedFlag = (f) =>
-          f._id === fileId ? { ...f, ...updatedFile, isShared: true, shareId } : f;
+          f._id === fileId ? { ...f, ...updatedFile, isShared: true, shareId, visibility: updatedVisibility } : f;
 
         setFiles((prev) => prev.map(updateSharedFlag));
         setRecentFiles((prev) => prev.map(updateSharedFlag));
@@ -302,16 +312,17 @@ export const DriveProvider = ({ children }) => {
           fileUrl: updatedFile.fileUrl,
           shareId: shareId,
           sharedAt: updatedFile.sharedAt || new Date(),
+          visibility: updatedVisibility,
           owner
         };
 
         setSharedLinks((prev) => {
-          // Prevent duplicates in state
-          if (prev.some(link => link._id === fileId)) return prev;
-          return [newSharedLink, ...prev];
+          // Remove existing reference first to avoid conflicts on update
+          const filtered = prev.filter(link => link._id !== fileId);
+          return [newSharedLink, ...filtered];
         });
 
-        return { success: true, shareUrl, shareId };
+        return { success: true, shareUrl, shareId, visibility: updatedVisibility };
       }
       return { success: false, message: 'Failed to generate share link' };
     } catch (error) {
@@ -352,10 +363,52 @@ export const DriveProvider = ({ children }) => {
     }
   };
 
+  const fetchAccessRequests = async () => {
+    if (!user) return;
+    setLoadingAccessRequests(true);
+    try {
+      const response = await api.get('/share/access-requests');
+      if (response.data.success) {
+        setAccessRequests(response.data.requests || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch access requests:', error);
+    } finally {
+      setLoadingAccessRequests(false);
+    }
+  };
+
+  const approveRequest = async (requestId) => {
+    try {
+      const response = await api.patch(`/share/access-requests/${requestId}/approve`);
+      if (response.data.success) {
+        setAccessRequests((prev) => prev.filter((r) => r._id !== requestId));
+        return { success: true };
+      }
+    } catch (error) {
+      console.error('Failed to approve request:', error);
+      return { success: false, message: error.response?.data?.message || 'Failed to approve request' };
+    }
+  };
+
+  const rejectRequest = async (requestId) => {
+    try {
+      const response = await api.patch(`/share/access-requests/${requestId}/reject`);
+      if (response.data.success) {
+        setAccessRequests((prev) => prev.filter((r) => r._id !== requestId));
+        return { success: true };
+      }
+    } catch (error) {
+      console.error('Failed to reject request:', error);
+      return { success: false, message: error.response?.data?.message || 'Failed to reject request' };
+    }
+  };
+
   return (
     <DriveContext.Provider value={{ 
       files, folders, recentFiles, sharedLinks, storageUsed, storageLimit, loadingDrive, uploadState,
-      fetchDriveData, uploadFile, createFolder, deleteFileById, restoreFileById, shareFileById, unshareFileById
+      accessRequests, loadingAccessRequests, fetchDriveData, uploadFile, createFolder, deleteFileById, 
+      restoreFileById, shareFileById, unshareFileById, fetchAccessRequests, approveRequest, rejectRequest
     }}>
       {children}
     </DriveContext.Provider>

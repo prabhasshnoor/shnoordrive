@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { 
   Plus, HardDrive, Clock, Star, Share2, Trash2, Cloud, FolderPlus, 
-  FileUp, FolderUp, ChevronRight, X, LogOut 
+  FileUp, FolderUp, ChevronRight, X, LogOut, UserCheck 
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useDrive } from '../../context/DriveContext';
@@ -45,7 +45,7 @@ const DashboardSidebar = ({ isOpen, onClose }) => {
   const [folderName, setFolderName] = useState('Untitled folder');
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  const { storageUsed, storageLimit, uploadFile, createFolder, sharedLinks } = useDrive();
+  const { storageUsed, storageLimit, uploadFile, createFolder, sharedLinks, accessRequests } = useDrive();
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -168,6 +168,7 @@ const DashboardSidebar = ({ isOpen, onClose }) => {
         <NavItem icon={Clock} label="Recent" to="/drive/recent" active={location.pathname === '/drive/recent'} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Star} label="Starred" to="/drive/starred" active={location.pathname === '/drive/starred'} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Share2} label="Shared Links" to="/drive/shared-links" active={location.pathname === '/drive/shared-links'} badge={sharedLinks?.length} onClick={() => isMobileView && onClose()} />
+        <NavItem icon={UserCheck} label="Access Requests" to="/drive/access-requests" active={location.pathname === '/drive/access-requests'} badge={accessRequests?.length} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Trash2} label="Bin" to="/drive/bin" active={location.pathname === '/drive/bin'} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Cloud} label="Storage" to="/drive/storage" active={location.pathname === '/drive/storage'} onClick={() => isMobileView && onClose()} />
         

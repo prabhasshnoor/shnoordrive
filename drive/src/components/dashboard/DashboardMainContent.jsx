@@ -4,13 +4,16 @@ import {
   Info, File, FileImage, FileVideo, FileText, Music, 
   Trash2, Eye, Download, Folder, ChevronRight,
   Clock, Star, HardDrive, RotateCcw, Cloud, LayoutGrid, List,
-  MoreVertical, Check, FolderOpen, Share2, Link2, Users, AlertCircle
+  MoreVertical, Check, FolderOpen, Share2, Link2, Users, AlertCircle,
+  CheckCircle2, Lock, ShieldAlert, Send
 } from 'lucide-react';
 import { useDrive } from '../../context/DriveContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import SharedBadge from './SharedBadge';
 import ShareModal from './ShareModal';
 import SharedLinksPage from './SharedLinksPage';
+import AccessRequestsPage from './AccessRequestsPage';
+import RequestAccessPage from '../../pages/RequestAccessPage';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import api from '../../api/axios';
@@ -89,6 +92,7 @@ const DashboardMainContent = ({ onMenuClick }) => {
   const isStorageView = location.pathname === '/drive/storage';
   const isSharedLinkView = location.pathname.startsWith('/drive/shared/');
   const isSharedLinksView = location.pathname === '/drive/shared-links';
+  const isAccessRequestsView = location.pathname === '/drive/access-requests';
 
   // States for shared link details
   const [sharedLinkData, setSharedLinkData] = useState(null);
@@ -96,12 +100,26 @@ const DashboardMainContent = ({ onMenuClick }) => {
   const [sharedLinkError, setSharedLinkError] = useState(null);
   const [openedTime, setOpenedTime] = useState('');
 
+  // Access request specific states for private links inside dashboard
+  const [requiresAccessLink, setRequiresAccessLink] = useState(false);
+  const [requestStatusLink, setRequestStatusLink] = useState(null); // 'pending' | 'rejected' | null
+  const [ownerInfoLink, setOwnerInfoLink] = useState(null);
+  const [fileInfoLink, setFileInfoLink] = useState(null);
+  
+  // User input states for request access form inside dashboard
+  const [requestedRole, setRequestedRole] = useState('viewer');
+  const [requestMessage, setRequestMessage] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+
   // Fetch shared file metadata if in shared link view
   useEffect(() => {
     const fetchSharedLink = async () => {
       if (!shareId) return;
       setLoadingSharedLink(true);
       setSharedLinkError(null);
+      setRequiresAccessLink(false);
+      setRequestStatusLink(null);
+      
       try {
         const response = await api.get(`/shared/${shareId}`);
         if (response.data.success) {
@@ -114,7 +132,14 @@ const DashboardMainContent = ({ onMenuClick }) => {
           // Sync the user's active drive files and storage consumption in context
           fetchDriveData();
         } else {
-          setSharedLinkError(response.data.message || 'Unable to load shared file.');
+          if (response.data.requiresAccess) {
+            setRequiresAccessLink(true);
+            setRequestStatusLink(response.data.requestStatus);
+            setOwnerInfoLink(response.data.owner);
+            setFileInfoLink(response.data.file);
+          } else {
+            setSharedLinkError(response.data.message || 'Unable to load shared file.');
+          }
         }
       } catch (err) {
         console.error('Fetch shared file failed:', err);
@@ -130,8 +155,30 @@ const DashboardMainContent = ({ onMenuClick }) => {
     } else {
       setSharedLinkData(null);
       setSharedLinkError(null);
+      setRequiresAccessLink(false);
     }
   }, [isSharedLinkView, shareId, fetchDriveData]);
+
+  const handleRequestAccessSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingRequest(true);
+    try {
+      const response = await api.post('/share/request-access', {
+        shareId,
+        requestedRole,
+        message: requestMessage
+      });
+      if (response.data.success) {
+        toast.success('Access request submitted!');
+        setRequestStatusLink('pending');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || 'Failed to submit request');
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
 
   // Helper helper to display animated toast messages using react-hot-toast
   const showToast = (message, type = 'success') => {
@@ -408,7 +455,9 @@ const DashboardMainContent = ({ onMenuClick }) => {
       
       {/* Scrollable primary body space */}
       <div className="flex-1 overflow-y-auto py-4">
-        {isSharedLinksView ? (
+        {isAccessRequestsView ? (
+          <AccessRequestsPage />
+        ) : isSharedLinksView ? (
           <SharedLinksPage />
         ) : isSharedLinkView ? (
           <AnimatePresence mode="popLayout">
@@ -418,6 +467,14 @@ const DashboardMainContent = ({ onMenuClick }) => {
                   <div className="w-8 h-8 border-3 border-blue-150 border-t-blue-600 rounded-full animate-spin" />
                   <p className="text-xs font-semibold text-slate-500">Retrieving shared file details...</p>
                 </div>
+              ) : requiresAccessLink ? (
+                <RequestAccessPage
+                  shareId={shareId}
+                  ownerInfo={ownerInfoLink}
+                  fileInfo={fileInfoLink}
+                  requestStatus={requestStatusLink}
+                  setRequestStatus={setRequestStatusLink}
+                />
               ) : sharedLinkError ? (
                 <div className="py-12 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3 font-sans">
                   <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 animate-pulse">
