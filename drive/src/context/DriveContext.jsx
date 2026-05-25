@@ -14,6 +14,7 @@ export const DriveProvider = ({ children }) => {
   const [files, setFiles] = useState([]);
   const [folders, setFolders] = useState([]);
   const [recentFiles, setRecentFiles] = useState([]);
+  const [sharedLinks, setSharedLinks] = useState([]);
   const [storageUsed, setStorageUsed] = useState(0);
   const [storageLimit, setStorageLimit] = useState(104857600); // Default 100MB
   const [loadingDrive, setLoadingDrive] = useState(false);
@@ -44,6 +45,12 @@ export const DriveProvider = ({ children }) => {
         setStorageUsed(profileRes.data.user.storageUsed);
         setStorageLimit(profileRes.data.user.storageLimit);
       }
+
+      // 4. Get shared links
+      const sharedRes = await api.get('/files/shared-links');
+      if (sharedRes.data.success) {
+        setSharedLinks(sharedRes.data.files || []);
+      }
     } catch (error) {
       console.error('Failed to retrieve synchronized drive listing:', error);
     } finally {
@@ -60,6 +67,7 @@ export const DriveProvider = ({ children }) => {
       setFiles([]);
       setFolders([]);
       setRecentFiles([]);
+      setSharedLinks([]);
       setStorageUsed(0);
     }
   }, [user]);
@@ -147,6 +155,7 @@ export const DriveProvider = ({ children }) => {
     const previousFiles = [...files];
     const previousFolders = [...folders];
     const previousRecent = [...recentFiles];
+    const previousSharedLinks = [...sharedLinks];
     const previousStorageUsed = storageUsed;
 
     const fileToDelete = files.find((f) => f._id === fileId);
@@ -155,6 +164,7 @@ export const DriveProvider = ({ children }) => {
     const isPermanent = fileToDelete.isDeleted === true;
 
     // 2. OPTIMISTIC UPDATE: instantly alter local state arrays before API call completes
+    setSharedLinks((prev) => prev.filter((f) => f._id !== fileId));
     if (isPermanent) {
       // Permanent: purge from all lists and subtract size instantly
       setFiles((prev) => prev.filter((f) => f._id !== fileId));
@@ -190,6 +200,7 @@ export const DriveProvider = ({ children }) => {
       setFiles(previousFiles);
       setFolders(previousFolders);
       setRecentFiles(previousRecent);
+      setSharedLinks(previousSharedLinks);
       setStorageUsed(previousStorageUsed);
       return { success: false, message: error.response?.data?.message || 'Deletion failed' };
     }
@@ -201,6 +212,7 @@ export const DriveProvider = ({ children }) => {
     const previousFiles = [...files];
     const previousFolders = [...folders];
     const previousRecent = [...recentFiles];
+    const previousSharedLinks = [...sharedLinks];
     const previousStorageUsed = storageUsed;
 
     const fileToRestore = files.find((f) => f._id === fileId);
@@ -213,6 +225,28 @@ export const DriveProvider = ({ children }) => {
       setFolders((prev) => prev.map((fol) => fol._id === fileToRestore.folderId ? { ...fol, isDeleted: false } : fol));
     }
     setStorageUsed((prev) => Math.min(storageLimit, prev + fileSize));
+
+    if (fileToRestore && fileToRestore.isShared) {
+      const owner = {
+        name: user?.name || 'Me',
+        email: user?.email || '',
+        avatar: user?.avatar || null
+      };
+      const restoredLink = {
+        _id: fileToRestore._id,
+        fileName: fileToRestore.fileName,
+        size: fileToRestore.size,
+        type: fileToRestore.type,
+        fileUrl: fileToRestore.fileUrl,
+        shareId: fileToRestore.shareId,
+        sharedAt: fileToRestore.sharedAt || new Date(),
+        owner
+      };
+      setSharedLinks((prev) => {
+        if (prev.some(link => link._id === fileId)) return prev;
+        return [restoredLink, ...prev];
+      });
+    }
 
     try {
       // 3. Silently trigger restore API call
@@ -230,15 +264,98 @@ export const DriveProvider = ({ children }) => {
       setFiles(previousFiles);
       setFolders(previousFolders);
       setRecentFiles(previousRecent);
+      setSharedLinks(previousSharedLinks);
       setStorageUsed(previousStorageUsed);
       return { success: false, message: error.response?.data?.message || 'Restoration failed' };
     }
   };
 
+  // @desc    Share a file by generating a unique public link via the backend API
+  // Updates local state instantly so the shared badge appears without a page refresh
+  const shareFileById = async (fileId) => {
+    try {
+      // Call the share endpoint on the backend
+      const response = await api.post(`/files/${fileId}/share`);
+      if (response.data.success) {
+        const { shareId, shareUrl, file: updatedFile } = response.data;
+
+        // Instantly update the file's isShared flag in all local state arrays
+        // so the shared badge appears in real-time across all views
+        const updateSharedFlag = (f) =>
+          f._id === fileId ? { ...f, ...updatedFile, isShared: true, shareId } : f;
+
+        setFiles((prev) => prev.map(updateSharedFlag));
+        setRecentFiles((prev) => prev.map(updateSharedFlag));
+
+        // Construct a client-side owner representation for the newly shared link item
+        const owner = {
+          name: user?.name || 'Me',
+          email: user?.email || '',
+          avatar: user?.avatar || null
+        };
+
+        const newSharedLink = {
+          _id: updatedFile._id,
+          fileName: updatedFile.fileName,
+          size: updatedFile.size,
+          type: updatedFile.type,
+          fileUrl: updatedFile.fileUrl,
+          shareId: shareId,
+          sharedAt: updatedFile.sharedAt || new Date(),
+          owner
+        };
+
+        setSharedLinks((prev) => {
+          // Prevent duplicates in state
+          if (prev.some(link => link._id === fileId)) return prev;
+          return [newSharedLink, ...prev];
+        });
+
+        return { success: true, shareUrl, shareId };
+      }
+      return { success: false, message: 'Failed to generate share link' };
+    } catch (error) {
+      console.error('File share failed:', error);
+      const message = error.response?.data?.message || 'Failed to share file';
+      return { success: false, message };
+    }
+  };
+
+  // @desc    Unshare a file (remove shared link) and update states instantly
+  const unshareFileById = async (fileId) => {
+    const previousSharedLinks = [...sharedLinks];
+    const previousFiles = [...files];
+    const previousRecent = [...recentFiles];
+
+    // Optimistic UI updates
+    setSharedLinks((prev) => prev.filter((f) => f._id !== fileId));
+
+    const updateUnsharedFlag = (f) =>
+      f._id === fileId ? { ...f, isShared: false, shareId: null, sharedAt: null } : f;
+
+    setFiles((prev) => prev.map(updateUnsharedFlag));
+    setRecentFiles((prev) => prev.map(updateUnsharedFlag));
+
+    try {
+      const response = await api.put(`/files/${fileId}/unshare`);
+      if (response.data.success) {
+        return { success: true };
+      } else {
+        throw new Error('Unsharing API call returned success = false');
+      }
+    } catch (error) {
+      console.error('Optimistic UI rollback triggered for unsharing:', error);
+      setSharedLinks(previousSharedLinks);
+      setFiles(previousFiles);
+      setRecentFiles(previousRecent);
+      return { success: false, message: error.response?.data?.message || 'Failed to remove share' };
+    }
+  };
+
   return (
     <DriveContext.Provider value={{ 
-      files, folders, recentFiles, storageUsed, storageLimit, loadingDrive, uploadState,
-      fetchDriveData, uploadFile, createFolder, deleteFileById, restoreFileById
+      files, folders, recentFiles, sharedLinks, storageUsed, storageLimit, loadingDrive, uploadState,
+      fetchDriveData, uploadFile, createFolder, deleteFileById, restoreFileById, shareFileById, unshareFileById
     }}>
       {children}
     </DriveContext.Provider>

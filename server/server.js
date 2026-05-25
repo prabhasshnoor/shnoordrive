@@ -9,6 +9,7 @@ import fileRoutes from './routes/file.js';
 import userRoutes from './routes/user.js';
 import driveRoutes from './routes/drive.js';
 import protectedRoutes from './routes/protected.js';
+import shareRoutes from './routes/share.js';
 
 dotenv.config();
 connectDB();
@@ -58,6 +59,9 @@ app.use('/api/drive', driveRoutes);
 
 // Protected example route
 app.use('/api/protected', protectedRoutes);
+
+// Share feature routes (POST /api/files/:id/share & GET /api/shared/:shareId)
+app.use('/api', shareRoutes);
 
 // Start server
 const PORT = process.env.PORT || 5000;

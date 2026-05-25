@@ -3,10 +3,7 @@ import { Search, Settings, HelpCircle, Grid, Menu, LogOut, Cloud } from 'lucide-
 import { useAuth } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
 
-/**
- * DashboardHeader - Modern top navigation header.
- * Exposes sidebar triggers, user status widgets, and MERN search queries.
- */
+
 const DashboardHeader = ({ onMenuClick }) => {
   const { user, logout } = useAuth();
 

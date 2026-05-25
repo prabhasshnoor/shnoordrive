@@ -110,7 +110,7 @@ export const forgotPassword = async (req, res) => {
     // Build the password reset link dynamically using the FRONTEND_URL environment variable.
     // In production (Render), FRONTEND_URL = "https://drive-nz9r.onrender.com"
     // In local development, it falls back to "http://localhost:5173"
-    const frontendBase = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendBase = process.env.FRONTEND_URL || 'https://drive-nz9r.onrender.com';
     const resetUrl = `${frontendBase}/reset-password/${resetToken}`;
     const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please make a put request to: \n\n ${resetUrl}`;
 

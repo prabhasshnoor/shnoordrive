@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { 
-  Plus, HardDrive, Clock, Star, Trash2, Cloud, FolderPlus, 
+  Plus, HardDrive, Clock, Star, Share2, Trash2, Cloud, FolderPlus, 
   FileUp, FolderUp, ChevronRight, X, LogOut 
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 /**
  * NavItem - Sleek navigation item with Framer Motion active bubbles.
  */
-const NavItem = ({ icon: Icon, label, to = '/drive', active = false, onClick }) => {
+const NavItem = ({ icon: Icon, label, to = '/drive', active = false, onClick, badge }) => {
   return (
     <Link to={to} onClick={onClick} className="block no-underline select-none">
       <div className={`flex items-center px-4 py-2.5 mx-3 mb-1 rounded-xl cursor-pointer relative transition-all group ${active ? 'text-blue-600 font-bold' : 'hover:bg-slate-100/80 text-slate-600 hover:text-slate-900'}`}>
@@ -26,7 +26,12 @@ const NavItem = ({ icon: Icon, label, to = '/drive', active = false, onClick }) 
         )}
         
         <Icon size={18} className={`mr-3.5 transition-transform duration-200 group-hover:scale-105 ${active ? 'text-blue-600 stroke-[2.2]' : 'text-slate-500 group-hover:text-slate-700 stroke-[1.8]'}`} />
-        <span className="text-xs tracking-wider uppercase font-semibold">{label}</span>
+        <span className="text-xs tracking-wider uppercase font-semibold flex-1">{label}</span>
+        {badge !== undefined && badge > 0 && (
+          <span className="bg-blue-100 text-blue-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full select-none">
+            {badge}
+          </span>
+        )}
       </div>
     </Link>
   );
@@ -40,7 +45,7 @@ const DashboardSidebar = ({ isOpen, onClose }) => {
   const [folderName, setFolderName] = useState('Untitled folder');
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  const { storageUsed, storageLimit, uploadFile, createFolder } = useDrive();
+  const { storageUsed, storageLimit, uploadFile, createFolder, sharedLinks } = useDrive();
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -162,6 +167,7 @@ const DashboardSidebar = ({ isOpen, onClose }) => {
         <NavItem icon={HardDrive} label="My Drive" to="/drive" active={location.pathname === '/drive'} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Clock} label="Recent" to="/drive/recent" active={location.pathname === '/drive/recent'} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Star} label="Starred" to="/drive/starred" active={location.pathname === '/drive/starred'} onClick={() => isMobileView && onClose()} />
+        <NavItem icon={Share2} label="Shared Links" to="/drive/shared-links" active={location.pathname === '/drive/shared-links'} badge={sharedLinks?.length} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Trash2} label="Bin" to="/drive/bin" active={location.pathname === '/drive/bin'} onClick={() => isMobileView && onClose()} />
         <NavItem icon={Cloud} label="Storage" to="/drive/storage" active={location.pathname === '/drive/storage'} onClick={() => isMobileView && onClose()} />
         
