@@ -171,13 +171,19 @@ export const deleteFile = async (req, res) => {
     }
 
     // B. PERMANENT DELETE: If already inside the Bin, clear permanently!
-    // 1. Delete physical file from disk if it is not a virtual folder
+    // 1. Delete physical file from disk if it is not a virtual folder and is not referenced by any other copy/clone
     if (file.type !== 'folder' && file.fileUrl) {
-      const filePath = path.join(process.cwd(), file.fileUrl);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      // Check if any other user's file record is referencing the same fileUrl (cloned files)
+      const referenceCount = await File.countDocuments({ fileUrl: file.fileUrl });
+      if (referenceCount <= 1) {
+        const filePath = path.join(process.cwd(), file.fileUrl);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        } else {
+          console.warn(`File not found on disk at: ${filePath}`);
+        }
       } else {
-        console.warn(`File not found on disk at: ${filePath}`);
+        console.log(`Skipping physical file deletion as it is referenced by ${referenceCount} documents.`);
       }
     } else if (file.type === 'folder' && file.folderId) {
       // Clean up the corresponding Folder collection record as well

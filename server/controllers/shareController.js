@@ -87,11 +87,13 @@ export const getSharedFile = async (req, res) => {
       return res.status(400).json({ message: 'Invalid share link format' });
     }
 
-    // 2. Find the file by its shareId and ensure it's actively shared (sort by oldest createdAt to get the original file)
-    const file = await File.findOne({ shareId, isShared: true, isDeleted: { $ne: true } }).sort({ createdAt: 1 });
-    if (!file) {
+    // 2. Find the original file (the oldest one with this shareId) to ensure we always reference the owner's file
+    const originalFile = await File.findOne({ shareId }).sort({ createdAt: 1 });
+    if (!originalFile || !originalFile.isShared || originalFile.isDeleted) {
       return res.status(404).json({ message: 'This item is not shared or the link is invalid' });
     }
+
+    const file = originalFile;
 
     // Optional: Copy the shared file to the logged-in child account's drive if they are not the owner
     let loggedInUserId = null;
@@ -129,11 +131,32 @@ export const getSharedFile = async (req, res) => {
           childUser.storageUsed = Math.min(childUser.storageLimit, childUser.storageUsed + file.size);
           await childUser.save();
         }
-      } else if (!existingFile.isShared) {
-        existingFile.isShared = true;
-        existingFile.shareId = file.shareId;
-        existingFile.sharedAt = file.sharedAt || new Date();
-        await existingFile.save();
+      } else {
+        let needsSave = false;
+        
+        // If the copy was previously soft-deleted, restore it
+        if (existingFile.isDeleted) {
+          existingFile.isDeleted = false;
+          needsSave = true;
+          
+          // Re-add to storage consumption
+          const childUser = await User.findById(loggedInUserId);
+          if (childUser) {
+            childUser.storageUsed = Math.min(childUser.storageLimit, childUser.storageUsed + file.size);
+            await childUser.save();
+          }
+        }
+        
+        if (!existingFile.isShared) {
+          existingFile.isShared = true;
+          existingFile.shareId = file.shareId;
+          existingFile.sharedAt = file.sharedAt || new Date();
+          needsSave = true;
+        }
+        
+        if (needsSave) {
+          await existingFile.save();
+        }
       }
     }
 
