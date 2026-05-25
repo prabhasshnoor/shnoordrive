@@ -1,0 +1,13 @@
+# render.yaml
+services:
+  # Frontend Static Site
+  - type: static
+    name: drive-frontend
+    repo: https://github.com/prabhasshnoor/shnoordrive # Or their connected repository
+    buildCommand: npm run build
+    publishPath: drive/dist
+    routes:
+      # Rewrite all requests to index.html for React Router client-side routing
+      - type: rewrite
+        source: /*
+        destination: /index.html
