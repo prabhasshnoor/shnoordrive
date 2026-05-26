@@ -1,4 +1,4 @@
-// models/AccessRequest.js
+
 import mongoose from 'mongoose';
 
 const accessRequestSchema = new mongoose.Schema({

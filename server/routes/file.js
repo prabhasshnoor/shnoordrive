@@ -1,4 +1,4 @@
-// routes/file.js
+
 import express from 'express';
 import { uploadFile, deleteFile, upload, createFolder, getRecentFiles, restoreFile } from '../controllers/fileController.js';
 import protect from '../middleware/auth.js';

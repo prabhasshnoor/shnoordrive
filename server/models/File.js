@@ -1,5 +1,4 @@
-// models/File.js
-// Mongoose model to store uploaded file metadata
+
 import mongoose from 'mongoose';
 
 const fileSchema = new mongoose.Schema({

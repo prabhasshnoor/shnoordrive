@@ -1,5 +1,4 @@
-// controllers/shareController.js
-// Handles file sharing logic — generating unique share links and serving shared file data.
+
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import File from '../models/File.js';

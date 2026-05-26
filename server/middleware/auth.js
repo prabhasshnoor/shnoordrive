@@ -1,5 +1,4 @@
-// middleware/auth.js
-// Middleware to protect routes using JSON Web Tokens (JWT)
+
 
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';

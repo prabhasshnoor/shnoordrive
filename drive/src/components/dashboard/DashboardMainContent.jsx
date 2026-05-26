@@ -5,7 +5,7 @@ import {
   Trash2, Eye, Download, Folder, ChevronRight,
   Clock, Star, HardDrive, RotateCcw, Cloud, LayoutGrid, List,
   MoreVertical, Check, FolderOpen, Share2, Link2, Users, AlertCircle,
-  CheckCircle2, Lock, ShieldAlert, Send
+  CheckCircle2, Lock, ShieldAlert, Send, Pencil, FolderSymlink, ChevronDown
 } from 'lucide-react';
 import { useDrive } from '../../context/DriveContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -69,10 +69,22 @@ const getFileTypeLabel = (mimeType) => {
   return 'Document';
 };
 
+const isDirectChild = (itemRelativePath, parentPath) => {
+  if (!itemRelativePath) return parentPath === null;
+  if (parentPath === null) {
+    return !itemRelativePath.includes('/');
+  } else {
+    const prefix = `${parentPath}/`;
+    if (!itemRelativePath.startsWith(prefix)) return false;
+    const remaining = itemRelativePath.substring(prefix.length);
+    return !remaining.includes('/');
+  }
+};
+
 const DashboardMainContent = ({ onMenuClick }) => {
   const location = useLocation();
   const { shareId } = useParams();
-  const { files, loadingDrive, deleteFileById, restoreFileById, storageUsed, storageLimit, shareFileById, fetchDriveData } = useDrive();
+  const { files, loadingDrive, deleteFileById, restoreFileById, storageUsed, storageLimit, shareFileById, fetchDriveData, renameFileOrFolder, moveFileById, moveFolderById } = useDrive();
   const [currentFolder, setCurrentFolder] = useState(null); // null = Root, string = active folder directory
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
   const [activeMenuId, setActiveMenuId] = useState(null); // Tracks open action dropdowns for files
@@ -85,6 +97,47 @@ const DashboardMainContent = ({ onMenuClick }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareModalFile, setShareModalFile] = useState(null);
   const [shareModalUrl, setShareModalUrl] = useState('');
+
+  // Rename Modal States
+  const [renameFile, setRenameFile] = useState(null); // File/folder object to rename
+  const [renameInputValue, setRenameInputValue] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  // Move Modal States
+  const [moveFile, setMoveFile] = useState(null); // File/folder object to move
+  const [isMoving, setIsMoving] = useState(false);
+
+  const handleRenameTrigger = (file) => {
+    setRenameFile(file);
+    setRenameInputValue(file.fileName || '');
+  };
+
+  const handleRenameSave = async (e) => {
+    if (e) e.preventDefault();
+    if (!renameFile || !renameInputValue.trim()) return;
+
+    const trimmedValue = renameInputValue.trim();
+    if (trimmedValue === renameFile.fileName) {
+      setRenameFile(null);
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      const result = await renameFileOrFolder(renameFile._id, trimmedValue);
+      if (result && result.success) {
+        toast.success('Renamed successfully');
+        setRenameFile(null);
+      } else {
+        toast.error(result?.message || 'Rename failed');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Rename failed due to a network error');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
 
   const isRecentView = location.pathname === '/drive/recent';
   const isStarredView = location.pathname === '/drive/starred';
@@ -289,7 +342,7 @@ const DashboardMainContent = ({ onMenuClick }) => {
   // Filter virtual folders for My Drive active directory view
   const rootFolders = isRecentView || isStarredView || isBinView || isStorageView
     ? []
-    : files.filter(f => f.type === 'folder' && f.isDeleted !== true);
+    : files.filter(f => f.type === 'folder' && f.isDeleted !== true && isDirectChild(f.relativePath, currentFolder));
 
   // Filter files based on navigation pathway
   const visibleFiles = files.filter(file => {
@@ -308,11 +361,7 @@ const DashboardMainContent = ({ onMenuClick }) => {
       return false; // Empty starred state as default
     }
 
-    if (currentFolder === null) {
-      return !file.relativePath || !file.relativePath.includes('/');
-    } else {
-      return file.relativePath && file.relativePath.startsWith(`${currentFolder}/`);
-    }
+    return isDirectChild(file.relativePath, currentFolder);
   });
 
   const sortedFiles = isStorageView
@@ -413,15 +462,31 @@ const DashboardMainContent = ({ onMenuClick }) => {
           ) : currentFolder === null ? (
             <span className="text-slate-800">My Drive</span>
           ) : (
-            <div className="flex items-center text-sm font-bold">
+            <div className="flex items-center text-sm font-bold text-slate-400 select-none">
               <button 
                 onClick={() => setCurrentFolder(null)}
-                className="text-blue-600 hover:text-blue-700 hover:underline transition-all cursor-pointer"
+                className="text-blue-600 hover:text-blue-700 hover:underline transition-all cursor-pointer font-sans"
               >
                 My Drive
               </button>
-              <ChevronRight size={14} className="mx-1.5 text-slate-400 shrink-0" />
-              <span className="text-slate-800 truncate max-w-[150px]">{currentFolder}</span>
+              {currentFolder.split('/').map((part, index, arr) => {
+                const clickPath = arr.slice(0, index + 1).join('/');
+                return (
+                  <React.Fragment key={index}>
+                    <ChevronRight size={14} className="mx-1.5 text-slate-400 shrink-0" />
+                    {index === arr.length - 1 ? (
+                      <span className="text-slate-800 truncate max-w-[150px]">{part}</span>
+                    ) : (
+                      <button 
+                        onClick={() => setCurrentFolder(clickPath)}
+                        className="text-blue-600 hover:text-blue-700 hover:underline transition-all cursor-pointer font-sans truncate max-w-[120px]"
+                      >
+                        {part}
+                      </button>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </div>
           )}
         </div>
@@ -776,8 +841,8 @@ const DashboardMainContent = ({ onMenuClick }) => {
                       layout
                       whileHover={{ y: -3, scale: 1.01 }}
                       whileTap={{ scale: 0.99 }}
-                      onClick={() => setCurrentFolder(folder.fileName)}
-                      className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/50 rounded-2xl cursor-pointer transition-all shadow-sm group relative"
+                      onClick={() => setCurrentFolder(folder.relativePath)}
+                      className={`flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/50 rounded-2xl cursor-pointer transition-all shadow-sm group relative ${activeMenuId === folder._id ? 'z-50 overflow-visible' : 'z-10 overflow-hidden'}`}
                     >
                       <div className="flex items-center space-x-3 truncate pl-0.5">
                         <div className="p-2 rounded-xl bg-amber-50 text-amber-500 border border-amber-100 shrink-0">
@@ -791,16 +856,66 @@ const DashboardMainContent = ({ onMenuClick }) => {
                         </div>
                       </div>
                       
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          triggerDeleteConfirm(folder._id);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-200/60 transition-all shrink-0 cursor-pointer"
-                        title="Delete permanently"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="relative shrink-0 flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMenuId(activeMenuId === folder._id ? null : folder._id);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 transition-all cursor-pointer animate-none"
+                          title="More actions"
+                        >
+                          <MoreVertical size={15} />
+                        </button>
+
+                        {/* Folder Dropdown Menu */}
+                        <AnimatePresence>
+                          {activeMenuId === folder._id && (
+                            <>
+                              <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); }} />
+                              <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 w-32 text-left font-sans"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button 
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    handleRenameTrigger(folder);
+                                  }}
+                                  className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer text-left font-sans"
+                                >
+                                  <Pencil size={13} />
+                                  <span>Rename</span>
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    setMoveFile(folder);
+                                  }}
+                                  className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer text-left font-sans"
+                                >
+                                  <FolderSymlink size={13} />
+                                  <span>Move</span>
+                                </button>
+                                <div className="border-t border-slate-100 my-1" />
+                                <button 
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    triggerDeleteConfirm(folder._id);
+                                  }}
+                                  className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-rose-50 text-rose-600 text-xs font-semibold cursor-pointer text-left font-sans"
+                                >
+                                  <Trash2 size={13} />
+                                  <span>Delete</span>
+                                </button>
+                              </motion.div>
+                            </>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </motion.div>
                   ))}
                 </div>
@@ -884,6 +999,26 @@ const DashboardMainContent = ({ onMenuClick }) => {
                                         <Eye size={14} />
                                         <span>Preview</span>
                                       </a>
+                                      <button 
+                                        onClick={() => {
+                                          setActiveMenuId(null);
+                                          handleRenameTrigger(file);
+                                        }}
+                                        className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
+                                      >
+                                        <Pencil size={14} />
+                                        <span>Rename</span>
+                                      </button>
+                                      <button 
+                                        onClick={() => {
+                                          setActiveMenuId(null);
+                                          setMoveFile(file);
+                                        }}
+                                        className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer text-left font-sans"
+                                      >
+                                        <FolderSymlink size={14} />
+                                        <span>Move</span>
+                                      </button>
                                       <button 
                                         onClick={() => {
                                           setActiveMenuId(null);
@@ -1046,6 +1181,26 @@ const DashboardMainContent = ({ onMenuClick }) => {
                                               <Eye size={14} />
                                               <span>Preview</span>
                                             </a>
+                                            <button 
+                                              onClick={() => {
+                                                setActiveMenuId(null);
+                                                handleRenameTrigger(file);
+                                              }}
+                                              className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer text-left"
+                                            >
+                                              <Pencil size={14} />
+                                              <span>Rename</span>
+                                            </button>
+                                            <button 
+                                              onClick={() => {
+                                                setActiveMenuId(null);
+                                                setMoveFile(file);
+                                              }}
+                                              className="w-full flex items-center space-x-2.5 px-3 py-1.5 hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer text-left font-sans"
+                                            >
+                                              <FolderSymlink size={14} />
+                                              <span>Move</span>
+                                            </button>
                                             <button 
                                               onClick={() => {
                                                 setActiveMenuId(null);
@@ -1235,6 +1390,78 @@ const DashboardMainContent = ({ onMenuClick }) => {
         )}
       </AnimatePresence>
 
+      {/* Premium Rename Modal Popup */}
+      <AnimatePresence>
+        {renameFile && (
+          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-[1px] z-[99999] flex items-center justify-center font-sans">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setRenameFile(null)}
+              className="absolute inset-0"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="relative bg-white w-[380px] rounded-3xl p-6 shadow-2xl border border-slate-100 text-slate-800 z-10"
+            >
+              <form onSubmit={handleRenameSave}>
+                <div className="flex flex-col mb-5">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500 mb-4 self-center animate-none">
+                    <Pencil size={22} />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1 text-center font-sans">Rename Item</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold text-center mb-4 leading-relaxed">
+                    Provide a new name for your {renameFile.type === 'folder' ? 'folder' : 'file'}.
+                  </p>
+                  
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">New Name</label>
+                  <input 
+                    type="text" 
+                    value={renameInputValue}
+                    onChange={(e) => setRenameInputValue(e.target.value)}
+                    placeholder={`Enter ${renameFile.type === 'folder' ? 'folder' : 'file'} name`}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none transition-all"
+                    autoFocus
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-2 text-xs font-bold uppercase tracking-wider">
+                  <button 
+                    type="button"
+                    onClick={() => setRenameFile(null)}
+                    className="text-slate-500 hover:bg-slate-50 py-2.5 px-4 rounded-xl cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isRenaming || !renameInputValue.trim() || renameInputValue.trim() === renameFile.fileName}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:pointer-events-none text-white py-2.5 px-5 rounded-xl cursor-pointer shadow-md shadow-blue-500/10 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center"
+                  >
+                    {isRenaming ? (
+                      <div className="flex items-center space-x-1.5">
+                        <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span>Renaming...</span>
+                      </div>
+                    ) : (
+                      <span>Save Changes</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Background Deleting Loading Spinner */}
       <AnimatePresence>
         {deletingFileId && (
@@ -1260,6 +1487,271 @@ const DashboardMainContent = ({ onMenuClick }) => {
         file={shareModalFile} 
         shareUrl={shareModalUrl} 
       />
+
+      {/* Move Modal Component */}
+      <AnimatePresence>
+        {moveFile && (
+          <MoveModal 
+            isOpen={!!moveFile} 
+            onClose={() => setMoveFile(null)} 
+            file={moveFile}
+            files={files}
+            moveFileById={moveFileById}
+            moveFolderById={moveFolderById}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ==========================================
+// Folder Tree & Move Modal Helper Components
+// ==========================================
+
+const FolderNode = ({ folder, files, selectedFolderId, onSelect, activeMoveFile, expandedKeys, toggleExpand }) => {
+  // Check if this node is the one being moved or its descendant
+  if (activeMoveFile && activeMoveFile.type === 'folder') {
+    if (folder._id === activeMoveFile._id) return null;
+    if (folder.relativePath.startsWith(`${activeMoveFile.relativePath}/`)) return null;
+  }
+
+  const isExpanded = expandedKeys[folder._id] || false;
+
+  // Find direct child folders of this node
+  const childFolders = files.filter(
+    (f) => f.type === 'folder' && f.isDeleted !== true && isDirectChild(f.relativePath, folder.relativePath)
+  );
+
+  const hasChildren = childFolders.length > 0;
+  const isSelected = selectedFolderId === folder.folderId; // Actual Folder record ID
+
+  return (
+    <div className="pl-4 select-none font-sans text-xs">
+      <div 
+        onClick={() => onSelect(folder.folderId, folder.relativePath)}
+        className={`flex items-center space-x-1.5 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 text-blue-600 font-bold border border-blue-100/60' : 'hover:bg-slate-50 text-slate-700'}`}
+      >
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasChildren) toggleExpand(folder._id);
+          }}
+          className="p-1 hover:bg-slate-200/50 rounded cursor-pointer text-slate-400"
+        >
+          {hasChildren ? (
+            isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
+          ) : (
+            <div className="w-3 h-3" />
+          )}
+        </div>
+        <Folder size={14} className={isSelected ? 'text-blue-500 fill-blue-100' : 'text-slate-400'} />
+        <span className="truncate max-w-[200px]">{folder.fileName}</span>
+      </div>
+
+      {hasChildren && isExpanded && (
+        <div className="border-l border-slate-100 ml-3.5 mt-0.5 space-y-0.5">
+          {childFolders.map((child) => (
+            <FolderNode 
+              key={child._id} 
+              folder={child} 
+              files={files} 
+              selectedFolderId={selectedFolderId}
+              onSelect={onSelect}
+              activeMoveFile={activeMoveFile}
+              expandedKeys={expandedKeys}
+              toggleExpand={toggleExpand}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MoveModal = ({ isOpen, onClose, file, files, moveFileById, moveFolderById }) => {
+  const [selectedFolderId, setSelectedFolderId] = useState(null); // null = My Drive root
+  const [selectedFolderPath, setSelectedFolderPath] = useState('My Drive');
+  const [expandedKeys, setExpandedKeys] = useState({});
+  const [isSubmitMoving, setIsSubmitMoving] = useState(false);
+
+  // Reset state when modal is opened for a different file
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedFolderId(null);
+      setSelectedFolderPath('My Drive');
+    }
+  }, [isOpen, file]);
+
+  if (!isOpen || !file) return null;
+
+  const toggleExpand = (id) => {
+    setExpandedKeys((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Find root folders (direct children of null parent)
+  const rootFolders = files.filter(
+    (f) => f.type === 'folder' && f.isDeleted !== true && isDirectChild(f.relativePath, null)
+  );
+
+  const handleMoveSubmit = async (e) => {
+    if (e) e.preventDefault();
+    setIsSubmitMoving(true);
+    try {
+      let result;
+      if (file.type === 'folder') {
+        result = await moveFolderById(file._id, selectedFolderId);
+      } else {
+        result = await moveFileById(file._id, selectedFolderId);
+      }
+
+      if (result && result.success) {
+        toast.success(`Moved successfully to ${selectedFolderPath}`);
+        onClose();
+      } else {
+        toast.error(result?.message || 'Move failed');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to move item due to a network error');
+    } finally {
+      setIsSubmitMoving(false);
+    }
+  };
+
+  const selectRoot = () => {
+    setSelectedFolderId(null);
+    setSelectedFolderPath('My Drive');
+  };
+
+  const handleSelectFolder = (folderId, relativePath) => {
+    setSelectedFolderId(folderId);
+    setSelectedFolderPath(relativePath);
+  };
+
+  const isCurrentFolderSelected = 
+    (file.type === 'folder' && selectedFolderId === file.folderId) || 
+    (file.type !== 'folder' && selectedFolderId === file.folderId);
+
+  const isMoveDisabled = isSubmitMoving || isCurrentFolderSelected;
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-[1px] z-[99999] flex items-center justify-center font-sans">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className="relative bg-white w-[420px] rounded-3xl p-6 shadow-2xl border border-slate-100 text-slate-800 z-10 flex flex-col max-h-[85vh]"
+      >
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 select-none">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100/60 shrink-0">
+              <FolderSymlink size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Move Item</h3>
+              <p className="text-[10px] text-slate-400 font-semibold truncate max-w-[250px]">
+                {file.fileName}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-1.5 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-all active:scale-95 text-xs font-bold font-sans cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Modal content body: Directory tree selection */}
+        <div className="flex-1 overflow-y-auto py-4 space-y-4 min-h-[220px] max-h-[350px] scrollbar-thin">
+          <div>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-2 px-1">
+              Select Destination
+            </span>
+            
+            {/* My Drive Root selection */}
+            <div 
+              onClick={selectRoot}
+              className={`flex items-center space-x-2 py-2 px-2.5 rounded-xl cursor-pointer transition-colors border select-none ${selectedFolderId === null ? 'bg-blue-50 text-blue-600 font-bold border-blue-100' : 'hover:bg-slate-50 text-slate-700 border-transparent'}`}
+            >
+              <HardDrive size={14} className={selectedFolderId === null ? 'text-blue-500' : 'text-slate-400'} />
+              <span className="text-xs">My Drive (Root)</span>
+            </div>
+
+            {/* Child Tree */}
+            <div className="mt-2 pl-1 border-l border-slate-100/60 ml-2 space-y-1">
+              {rootFolders.map((rootFol) => (
+                <FolderNode 
+                  key={rootFol._id}
+                  folder={rootFol}
+                  files={files}
+                  selectedFolderId={selectedFolderId}
+                  onSelect={handleSelectFolder}
+                  activeMoveFile={file}
+                  expandedKeys={expandedKeys}
+                  toggleExpand={toggleExpand}
+                />
+              ))}
+              {rootFolders.length === 0 && (
+                <p className="text-[10px] text-slate-400 italic px-3 py-1 font-semibold">No folders found inside My Drive.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Breadcrumb location path preview */}
+        <div className="py-2.5 px-3 bg-slate-50 border border-slate-200/50 rounded-2xl mb-5 flex items-center justify-between text-xs select-none">
+          <div className="truncate max-w-[280px]">
+            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Destination Path</span>
+            <span className="text-xs font-bold text-slate-700 truncate font-mono">
+              {selectedFolderPath}
+            </span>
+          </div>
+          {isCurrentFolderSelected && (
+            <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 font-bold px-2 py-0.5 rounded-full shrink-0">
+              Current Folder
+            </span>
+          )}
+        </div>
+
+        {/* Actions buttons */}
+        <div className="flex justify-end space-x-2 text-xs font-bold uppercase tracking-wider border-t border-slate-100 pt-3">
+          <button 
+            type="button"
+            onClick={onClose}
+            className="text-slate-500 hover:bg-slate-50 py-2.5 px-4 rounded-xl cursor-pointer transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button"
+            disabled={isMoveDisabled}
+            onClick={handleMoveSubmit}
+            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:pointer-events-none text-white py-2.5 px-5 rounded-xl cursor-pointer shadow-md shadow-blue-500/10 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center"
+          >
+            {isSubmitMoving ? (
+              <div className="flex items-center space-x-1.5">
+                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Moving...</span>
+              </div>
+            ) : (
+              <span>Move Here</span>
+            )}
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 };

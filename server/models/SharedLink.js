@@ -1,4 +1,4 @@
-// models/SharedLink.js
+
 import mongoose from 'mongoose';
 
 const sharedLinkSchema = new mongoose.Schema({

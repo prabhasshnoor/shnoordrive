@@ -404,11 +404,173 @@ export const DriveProvider = ({ children }) => {
     }
   };
 
+  // @desc    Rename a file or virtual directory folder
+  const renameFileOrFolder = async (id, newName) => {
+    try {
+      const response = await api.patch(`/drive/rename/${id}`, { name: newName });
+      if (response.data.success) {
+        const updatedItem = response.data.item;
+
+        // 1. Store the old item to extract its folder/file name before updating
+        const oldItem = files.find((item) => item._id === id);
+
+        // 2. Update files array
+        setFiles((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedItem } : item))
+        );
+
+        // 3. If a folder was updated, also update folders array and child file paths
+        if (updatedItem.type === 'folder' && oldItem) {
+          const oldFolderName = oldItem.fileName;
+          const oldPrefix = `${oldFolderName}/`;
+          const newPrefix = `${updatedItem.fileName}/`;
+
+          // Update child relative paths in the frontend files state instantly
+          setFiles((prev) =>
+            prev.map((item) => {
+              if (item.relativePath && item.relativePath.startsWith(oldPrefix)) {
+                return {
+                  ...item,
+                  relativePath: newPrefix + item.relativePath.substring(oldPrefix.length)
+                };
+              }
+              return item;
+            })
+          );
+
+          if (response.data.folderRecord) {
+            const folderRecord = response.data.folderRecord;
+            setFolders((prev) =>
+              prev.map((fol) => (fol._id === folderRecord._id ? folderRecord : fol))
+            );
+          }
+        }
+
+        // 4. Update in recentFiles array
+        setRecentFiles((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedItem } : item))
+        );
+
+        // 5. Update in sharedLinks array
+        setSharedLinks((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedItem } : item))
+        );
+
+        return { success: true, item: updatedItem };
+      }
+      return { success: false, message: 'Rename failed' };
+    } catch (error) {
+      console.error('Rename failed:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to rename item'
+      };
+    }
+  };
+
+  // @desc    Move a file to a destination folder or My Drive root
+  const moveFileById = async (id, destinationFolderId) => {
+    try {
+      const response = await api.patch(`/drive/move/file/${id}`, { destinationFolderId });
+      if (response.data.success) {
+        const updatedItem = response.data.item;
+
+        // Update local files state
+        setFiles((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedItem } : item))
+        );
+
+        // Update in recentFiles array
+        setRecentFiles((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedItem } : item))
+        );
+
+        // Update in sharedLinks array
+        setSharedLinks((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedItem } : item))
+        );
+
+        return { success: true, item: updatedItem };
+      }
+      return { success: false, message: 'Failed to move file' };
+    } catch (error) {
+      console.error('Failed to move file:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to move file'
+      };
+    }
+  };
+
+  // @desc    Move a folder and nested items to a destination folder or My Drive root
+  const moveFolderById = async (id, destinationFolderId) => {
+    try {
+      const response = await api.patch(`/drive/move/folder/${id}`, { destinationFolderId });
+      if (response.data.success) {
+        const updatedFolderFile = response.data.item;
+        const updatedFolderRecord = response.data.folderRecord;
+
+        // Retrieve old folder item from local files state to compute relative path updates
+        const oldFolderFile = files.find((item) => item._id === id);
+
+        if (oldFolderFile) {
+          const oldPrefix = `${oldFolderFile.relativePath}/`;
+          const newPrefix = `${updatedFolderFile.relativePath}/`;
+
+          // Instantly recursively update paths of all child items in frontend files state
+          setFiles((prev) =>
+            prev.map((item) => {
+              if (item._id === id) {
+                // The folder itself
+                return { ...item, ...updatedFolderFile };
+              }
+              if (item.relativePath && item.relativePath.startsWith(oldPrefix)) {
+                // A nested file or folder inside it
+                return {
+                  ...item,
+                  relativePath: newPrefix + item.relativePath.substring(oldPrefix.length)
+                };
+              }
+              return item;
+            })
+          );
+        } else {
+          // Fallback if not found in list (e.g. state unsynced)
+          setFiles((prev) =>
+            prev.map((item) => (item._id === id ? { ...item, ...updatedFolderFile } : item))
+          );
+        }
+
+        // Update folders state
+        if (updatedFolderRecord) {
+          setFolders((prev) =>
+            prev.map((fol) => (fol._id === updatedFolderRecord._id ? updatedFolderRecord : fol))
+          );
+        }
+
+        // Update in sharedLinks array
+        setSharedLinks((prev) =>
+          prev.map((item) => (item._id === id ? { ...item, ...updatedFolderFile } : item))
+        );
+
+        return { success: true, item: updatedFolderFile };
+      }
+      return { success: false, message: 'Failed to move folder' };
+    } catch (error) {
+      console.error('Failed to move folder:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to move folder'
+      };
+    }
+  };
+
   return (
     <DriveContext.Provider value={{ 
       files, folders, recentFiles, sharedLinks, storageUsed, storageLimit, loadingDrive, uploadState,
       accessRequests, loadingAccessRequests, fetchDriveData, uploadFile, createFolder, deleteFileById, 
-      restoreFileById, shareFileById, unshareFileById, fetchAccessRequests, approveRequest, rejectRequest
+      restoreFileById, shareFileById, unshareFileById, fetchAccessRequests, approveRequest, rejectRequest,
+      renameFileOrFolder, moveFileById, moveFolderById
     }}>
       {children}
     </DriveContext.Provider>

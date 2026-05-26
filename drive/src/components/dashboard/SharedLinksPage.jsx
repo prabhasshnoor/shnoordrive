@@ -1,6 +1,4 @@
-// src/components/dashboard/SharedLinksPage.jsx
-// Premium component representing the "Shared Links" view in the dashboard.
-// Displays all files shared by the user with copy link, unshare, preview, and download capabilities.
+
 
 import React, { useState, useEffect } from 'react';
 import { useDrive } from '../../context/DriveContext';
